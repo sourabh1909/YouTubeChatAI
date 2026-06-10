@@ -257,6 +257,10 @@ if "temp_url_input" not in st.session_state:
     st.session_state.temp_url_input = ""
 if "transcript_text" not in st.session_state:
     st.session_state.transcript_text = ""
+if "show_manual_transcript_input" not in st.session_state:
+    st.session_state.show_manual_transcript_input = False
+if "failed_video_id" not in st.session_state:
+    st.session_state.failed_video_id = None
 
 # Main Application Title
 st.markdown("""
@@ -318,95 +322,144 @@ with st.sidebar:
             st.session_state.video_url = None
             st.session_state.rag_chain = None
             st.session_state.temp_url_input = ""
+            st.session_state.show_manual_transcript_input = False
+            st.session_state.failed_video_id = None
             st.rerun()
 
 # RAG Index Loader Screen
 if not st.session_state.video_id:
-    st.markdown("""
-    <div class='premium-card'>
-        <h3 style='margin-bottom: 8px; font-family: Outfit; font-weight: 600;'>Load YouTube Video Transcript</h3>
-        <p style='color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 0;'>
-            Input a video link below. We'll download the captions, partition the text, embed the paragraphs using local <b>Hugging Face</b> vectors, and build a high-speed search index in a local <b>FAISS database</b>.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # URL text input using state variable value
-    url_input = st.text_input(
-        "YouTube Video Link or ID:",
-        placeholder="e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        value=st.session_state.temp_url_input
-    )
-    
-    # Quick select templates
-    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-    st.markdown("<span class='panel-subheader'>💡 Or select a quick example video:</span>", unsafe_allow_html=True)
-    
-    ec1, ec2, ec3 = st.columns(3)
-    
-    # Wrap columns in a custom css class for custom styled buttons
-    st.markdown("<div class='sample-btn-col'>", unsafe_allow_html=True)
-    with ec1:
-        if st.button("🎵 Rick Astley (Verification)", key="ex_astley", type="secondary"):
-            st.session_state.temp_url_input = "dQw4w9WgXcQ"
-            st.rerun()
-    with ec2:
-        if st.button("🤖 Llama 3.1 & Groq RAG", key="ex_llama", type="secondary"):
-            st.session_state.temp_url_input = "ycPr5-27vAk"
-            st.rerun()
-    with ec3:
-        if st.button("⛓️ LangChain RAG Intro", key="ex_langchain", type="secondary"):
-            st.session_state.temp_url_input = "LHNtUMefd8o"
-            st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
-    
-    # Submit button
-    load_btn = st.button("Initialize Chatbot", type="primary", disabled=not url_input or not st.session_state.groq_api_key)
-    
-    if load_btn and url_input:
-        extracted_id = rag_engine.extract_video_id(url_input)
-        if not extracted_id:
-            st.error("❌ Invalid YouTube URL or Video ID format. Please verify the URL.")
-        else:
-            with st.spinner("⚡ Fetching transcript and building local RAG index... (Takes a few seconds)"):
+    if st.session_state.show_manual_transcript_input:
+        st.markdown(f"""
+        <div class='premium-card' style='border-color: rgba(239, 68, 68, 0.4) !important;'>
+            <h3 style='margin-bottom: 8px; font-family: Outfit; font-weight: 600; color: #f87171;'>📋 Manual Transcript Fallback</h3>
+            <p style='color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 0;'>
+                YouTube blocked the server's IP address from fetching the transcript for video ID <b>{st.session_state.failed_video_id}</b>.
+                Please copy the transcript of the video and paste it below to start your chat session.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        manual_text = st.text_area("Paste Transcript Text Here:", height=250, placeholder="Paste the video transcript here...")
+        
+        col_m1, col_m2 = st.columns([1, 1])
+        with col_m1:
+            submit_manual = st.button("Initialize Chatbot with Pasted Transcript", type="primary", disabled=not manual_text)
+        with col_m2:
+            cancel_manual = st.button("Cancel & Try Another Link", key="btn_cancel_manual")
+            if cancel_manual:
+                st.session_state.show_manual_transcript_input = False
+                st.session_state.failed_video_id = None
+                st.rerun()
+                
+        if submit_manual and manual_text:
+            extracted_id = st.session_state.failed_video_id
+            with st.spinner("⚡ Building local RAG index from pasted transcript... (Takes a few seconds)"):
                 try:
-                    # Check if a cached index exists to avoid network request and re-embedding
-                    if rag_engine.has_cached_index(extracted_id):
-                        st.toast("⚡ Found cached index. Loading...", icon="💾")
-                        vector_store = rag_engine.load_cached_vector_store(extracted_id)
-                        st.session_state.transcript_text = rag_engine.load_cached_transcript(extracted_id)
-                    else:
-                        st.toast("🌐 Fetching transcript from YouTube...", icon="📥")
-                        # Download transcripts
-                        transcript_text = rag_engine.fetch_transcript_text(extracted_id)
-                        
-                        st.toast("🧠 Generating embeddings and building FAISS index...", icon="⚙️")
-                        # Split and embed documents locally
-                        vector_store = rag_engine.create_vector_store(transcript_text, extracted_id)
-                        st.session_state.transcript_text = transcript_text
+                    st.toast("🧠 Generating embeddings and building FAISS index...", icon="⚙️")
+                    vector_store = rag_engine.create_vector_store(manual_text, extracted_id)
+                    st.session_state.transcript_text = manual_text
                     
-                    # Instantiate Groq retriever chain
                     rag_chain = rag_engine.get_rag_chain(vector_store, st.session_state.groq_api_key)
-                    
-                    # Cache RAG session state
                     st.session_state.video_id = extracted_id
                     st.session_state.video_url = f"https://www.youtube.com/watch?v={extracted_id}"
                     st.session_state.rag_chain = rag_chain
                     st.session_state.messages = []
                     st.session_state.last_processed_timestamp = time.time() * 1000
-                    
+                    st.session_state.show_manual_transcript_input = False
+                    st.session_state.failed_video_id = None
                     st.success("🎉 RAG Index successfully created!")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Failed to index transcript: {str(e)}")
-                    st.markdown("""
-                    **Common troubleshooting steps:**
-                    - Make sure the video is public and has subtitles (captions) enabled.
-                    - Check if your internet connection is blocked from calling YouTube's scraping ports.
-                    - Try loading another video ID.
-                    """)
+                    st.error(f"❌ Failed to build index: {str(e)}")
+    else:
+        st.markdown("""
+        <div class='premium-card'>
+            <h3 style='margin-bottom: 8px; font-family: Outfit; font-weight: 600;'>Load YouTube Video Transcript</h3>
+            <p style='color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 0;'>
+                Input a video link below. We'll download the captions, partition the text, embed the paragraphs using local <b>Hugging Face</b> vectors, and build a high-speed search index in a local <b>FAISS database</b>.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # URL text input using state variable value
+        url_input = st.text_input(
+            "YouTube Video Link or ID:",
+            placeholder="e.g., https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            value=st.session_state.temp_url_input
+        )
+        
+        # Quick select templates
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<span class='panel-subheader'>💡 Or select a quick example video:</span>", unsafe_allow_html=True)
+        
+        ec1, ec2, ec3 = st.columns(3)
+        
+        # Wrap columns in a custom css class for custom styled buttons
+        st.markdown("<div class='sample-btn-col'>", unsafe_allow_html=True)
+        with ec1:
+            if st.button("🎵 Rick Astley (Verification)", key="ex_astley", type="secondary"):
+                st.session_state.temp_url_input = "dQw4w9WgXcQ"
+                st.rerun()
+        with ec2:
+            if st.button("🤖 Llama 3.1 & Groq RAG", key="ex_llama", type="secondary"):
+                st.session_state.temp_url_input = "ycPr5-27vAk"
+                st.rerun()
+        with ec3:
+            if st.button("⛓️ LangChain RAG Intro", key="ex_langchain", type="secondary"):
+                st.session_state.temp_url_input = "LHNtUMefd8o"
+                st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+        
+        # Submit button
+        load_btn = st.button("Initialize Chatbot", type="primary", disabled=not url_input or not st.session_state.groq_api_key)
+        
+        if load_btn and url_input:
+            extracted_id = rag_engine.extract_video_id(url_input)
+            if not extracted_id:
+                st.error("❌ Invalid YouTube URL or Video ID format. Please verify the URL.")
+            else:
+                with st.spinner("⚡ Fetching transcript and building local RAG index... (Takes a few seconds)"):
+                    try:
+                        # Check if a cached index exists to avoid network request and re-embedding
+                        if rag_engine.has_cached_index(extracted_id):
+                            st.toast("⚡ Found cached index. Loading...", icon="💾")
+                            vector_store = rag_engine.load_cached_vector_store(extracted_id)
+                            st.session_state.transcript_text = rag_engine.load_cached_transcript(extracted_id)
+                        else:
+                            st.toast("🌐 Fetching transcript from YouTube...", icon="📥")
+                            # Download transcripts
+                            transcript_text = rag_engine.fetch_transcript_text(extracted_id)
+                            
+                            st.toast("🧠 Generating embeddings and building FAISS index...", icon="⚙️")
+                            # Split and embed documents locally
+                            vector_store = rag_engine.create_vector_store(transcript_text, extracted_id)
+                            st.session_state.transcript_text = transcript_text
+                        
+                        # Instantiate Groq retriever chain
+                        rag_chain = rag_engine.get_rag_chain(vector_store, st.session_state.groq_api_key)
+                        
+                        # Cache RAG session state
+                        st.session_state.video_id = extracted_id
+                        st.session_state.video_url = f"https://www.youtube.com/watch?v={extracted_id}"
+                        st.session_state.rag_chain = rag_chain
+                        st.session_state.messages = []
+                        st.session_state.last_processed_timestamp = time.time() * 1000
+                        
+                        st.success("🎉 RAG Index successfully created!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Failed to index transcript: {str(e)}")
+                        st.session_state.show_manual_transcript_input = True
+                        st.session_state.failed_video_id = extracted_id
+                        st.markdown("""
+                        **Common troubleshooting steps:**
+                        - Make sure the video is public and has subtitles (captions) enabled.
+                        - Check if your internet connection is blocked from calling YouTube's scraping ports.
+                        - Try loading another video ID.
+                        """)
+                        st.rerun()
 
 else:
     # Render loaded Chat interface
