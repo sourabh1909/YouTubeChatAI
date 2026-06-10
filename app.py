@@ -1,13 +1,4 @@
 import sys
-from unittest.mock import MagicMock
-
-# Mock torchvision to prevent Streamlit's local sources watcher from throwing
-# ModuleNotFoundError warnings for lazy-loaded transformers modules we don't use
-import importlib.machinery
-for module_name in ['torchvision', 'torchvision.transforms', 'torchvision.transforms.v2', 'torchvision.io']:
-    mock = MagicMock()
-    mock.__spec__ = importlib.machinery.ModuleSpec(name=module_name, loader=None)
-    sys.modules[module_name] = mock
 
 import warnings
 import logging
