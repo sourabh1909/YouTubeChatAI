@@ -3,13 +3,12 @@ import { Streamlit } from "streamlit-component-lib";
 import { 
   Send, Sparkles, Youtube, User, ArrowRight,
   Volume2, VolumeX, Copy, Check, Search, 
-  Settings, FileText, Download, Moon, Sun, 
-  HelpCircle, ArrowLeft, RefreshCw, Palette, Mic
+  Settings, FileText, Download, Palette, Mic
 } from "lucide-react";
 import { marked } from "marked";
 
 // Configure marked options
-marked.setOptions({
+marked.use({
   breaks: true,
   gfm: true
 });
@@ -181,10 +180,16 @@ export default function ChatComponent() {
     document.body.removeChild(link);
   };
 
+  // Escape special regex characters
+  const escapeRegExp = (string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  };
+
   // Highlight keywords in transcript
   const getHighlightedText = (text, highlight) => {
     if (!highlight.trim()) return text;
-    const parts = text.split(new RegExp(`(${highlight})`, 'gi'));
+    const escapedHighlight = escapeRegExp(highlight);
+    const parts = text.split(new RegExp(`(${escapedHighlight})`, 'gi'));
     return (
       <span>
         {parts.map((part, i) => 

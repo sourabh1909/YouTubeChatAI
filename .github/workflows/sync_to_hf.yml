@@ -1,0 +1,48 @@
+name: Sync to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main]
+  # Allows manual runs from GitHub's Actions tab
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build React Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Commit and Push Build to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Set temporary git config to commit the build
+          git config --global user.email "actions@github.com"
+          git config --global user.name "github-actions-bot"
+          
+          # Force add frontend/dist in case it's untracked
+          git add -f frontend/dist
+          
+          # Commit the compiled build files if there are any changes
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "Auto-compiled React frontend for Hugging Face deployment"
+          fi
+          
+          # Force push to your Hugging Face Space
+          # Note: Replace YOUR_HF_USERNAME and YOUR_SPACE_NAME with your actual values below
+          git push --force https://YOUR_HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/YOUR_HF_USERNAME/YOUR_SPACE_NAME main
