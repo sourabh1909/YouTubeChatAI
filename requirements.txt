@@ -9,3 +9,4 @@ python-dotenv==1.2.2
 sentence-transformers==5.5.1
 langchain-classic==1.0.7
 langchain-text-splitters==1.1.2
+yt-dlp==2026.6.9
