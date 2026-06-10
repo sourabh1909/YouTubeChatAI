@@ -5,3 +5,5 @@ __pycache__/
 faiss_indexes/
 
 node_modules/
+
+DEPLOYMENT.md

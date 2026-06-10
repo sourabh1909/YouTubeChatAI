@@ -3,10 +3,11 @@ from unittest.mock import MagicMock
 
 # Mock torchvision to prevent Streamlit's local sources watcher from throwing
 # ModuleNotFoundError warnings for lazy-loaded transformers modules we don't use
-sys.modules['torchvision'] = MagicMock()
-sys.modules['torchvision.transforms'] = MagicMock()
-sys.modules['torchvision.transforms.v2'] = MagicMock()
-sys.modules['torchvision.io'] = MagicMock()
+import importlib.machinery
+for module_name in ['torchvision', 'torchvision.transforms', 'torchvision.transforms.v2', 'torchvision.io']:
+    mock = MagicMock()
+    mock.__spec__ = importlib.machinery.ModuleSpec(name=module_name, loader=None)
+    sys.modules[module_name] = mock
 
 import warnings
 import logging
@@ -16,6 +17,7 @@ warnings.filterwarnings("ignore")
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
 import os
+import time
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
@@ -32,8 +34,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load Groq API Key from environment
+# Load Groq API Key from environment or Streamlit secrets
 env_groq_key = os.getenv("GROQ_API_KEY", "")
+if not env_groq_key:
+    try:
+        env_groq_key = st.secrets.get("GROQ_API_KEY", "")
+    except Exception:
+        pass
 st.session_state.groq_api_key = env_groq_key
 
 # Custom futuristic cyberpunk styling for Streamlit container
@@ -254,7 +261,7 @@ if "video_url" not in st.session_state:
 if "rag_chain" not in st.session_state:
     st.session_state.rag_chain = None
 if "last_processed_timestamp" not in st.session_state:
-    st.session_state.last_processed_timestamp = 0
+    st.session_state.last_processed_timestamp = time.time() * 1000
 if "temp_url_input" not in st.session_state:
     st.session_state.temp_url_input = ""
 if "transcript_text" not in st.session_state:
@@ -308,14 +315,14 @@ with st.sidebar:
         # Action Buttons
         if st.button("🧹 Clear Chat History", key="btn_clear"):
             st.session_state.messages = []
-            st.session_state.last_processed_timestamp = 0
+            st.session_state.last_processed_timestamp = time.time() * 1000
             st.rerun()
             
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
         if st.button("🔄 Load New Video", key="btn_new_vid"):
             st.session_state.messages = []
-            st.session_state.last_processed_timestamp = 0
+            st.session_state.last_processed_timestamp = time.time() * 1000
             st.session_state.video_id = None
             st.session_state.video_url = None
             st.session_state.rag_chain = None
@@ -397,7 +404,7 @@ if not st.session_state.video_id:
                     st.session_state.video_url = f"https://www.youtube.com/watch?v={extracted_id}"
                     st.session_state.rag_chain = rag_chain
                     st.session_state.messages = []
-                    st.session_state.last_processed_timestamp = 0
+                    st.session_state.last_processed_timestamp = time.time() * 1000
                     
                     st.success("🎉 RAG Index successfully created!")
                     st.rerun()

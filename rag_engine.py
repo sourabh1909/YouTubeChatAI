@@ -17,11 +17,12 @@ def extract_video_id(url_or_id):
     
     # Common YouTube URL patterns
     patterns = [
-        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?(?:[^&]*&)*v=([a-zA-Z0-9_-]{11})',
+        r'(?:https?://)?(?:www\.|m\.)?youtube\.com/watch\?(?:[^&]*&)*v=([a-zA-Z0-9_-]{11})',
         r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})',
+        r'(?:https?://)?(?:www\.|m\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+        r'(?:https?://)?(?:www\.|m\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})',
+        r'(?:https?://)?(?:www\.|m\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})',
+        r'(?:https?://)?(?:www\.|m\.)?youtube\.com/live/([a-zA-Z0-9_-]{11})',
         r'^([a-zA-Z0-9_-]{11})$'  # Raw ID
     ]
     
@@ -79,7 +80,10 @@ def has_cached_index(video_id):
     Checks if a local FAISS index exists for the given video ID.
     """
     index_path = f"faiss_indexes/index_{video_id}"
-    return os.path.exists(index_path)
+    return (
+        os.path.exists(os.path.join(index_path, "index.faiss")) and
+        os.path.exists(os.path.join(index_path, "transcript.txt"))
+    )
 
 def load_cached_vector_store(video_id):
     """
