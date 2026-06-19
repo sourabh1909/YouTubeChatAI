@@ -33,19 +33,20 @@ def extract_video_id(url_or_id):
     
     return None
 
-def fetch_transcript_text(video_id):
+def fetch_transcript_text(video_id, groq_api_key=None):
     """
     Fetches the transcript text for a given YouTube video ID.
     Attempts multiple methods to bypass restrictions:
-    1. YouTubeTranscriptApi with custom browser headers.
-    2. yt-dlp metadata extraction to parse json3 subtitles.
+    1. YouTubeTranscriptApi with custom browser headers & translation fallback.
+    2. yt-dlp metadata extraction to parse json3 subtitles & translation fallback.
+    3. Whisper API audio transcription via Groq as ultimate fallback.
     """
     import requests
     from requests import Session
     
     errors = []
     
-    # Method 1: YouTubeTranscriptApi with custom browser headers
+    # Method 1: YouTubeTranscriptApi with custom browser headers & translation fallback
     try:
         session = Session()
         session.headers.update({
@@ -58,10 +59,19 @@ def fetch_transcript_text(video_id):
         try:
             transcript = transcript_list.find_transcript(['en'])
         except Exception:
-            transcript = next(iter(transcript_list))
+            # Look for a translatable transcript and translate to English
+            translatable = None
+            for t in transcript_list:
+                if t.is_translatable:
+                    translatable = t
+                    break
+            if translatable:
+                transcript = translatable.translate('en')
+            else:
+                transcript = next(iter(transcript_list))
             
         data = transcript.fetch()
-        full_text = " ".join([entry.text for entry in data])
+        full_text = " ".join([entry.get('text', '') if isinstance(entry, dict) else getattr(entry, 'text', '') for entry in data])
         if full_text.strip():
             return full_text
     except Exception as e:
@@ -93,7 +103,12 @@ def fetch_transcript_text(video_id):
                 formats = subtitles[lang]
                 json3_format = next((f for f in formats if f.get('ext') == 'json3'), None)
                 if json3_format:
-                    res = requests.get(json3_format['url'], headers={
+                    sub_url = json3_format['url']
+                    if not lang.startswith('en'):
+                        # Instruct YouTube timedtext API to translate to English
+                        sub_url += '&tlang=en'
+                        
+                    res = requests.get(sub_url, headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     })
                     data = res.json()
@@ -110,6 +125,83 @@ def fetch_transcript_text(video_id):
                         return full_text
     except Exception as e:
         errors.append(f"yt-dlp failed: {str(e)}")
+        
+    # Method 3: Whisper audio transcription fallback using Groq
+    import os
+    if not groq_api_key:
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        
+    if groq_api_key:
+        try:
+            import yt_dlp
+            from groq import Groq
+            
+            # Create a temporary directory inside the workspace
+            temp_dir = 'temp_audio'
+            os.makedirs(temp_dir, exist_ok=True)
+            audio_path = os.path.join(temp_dir, f"audio_{video_id}")
+            
+            # Download low-bitrate audio format (format 139 is ~48kbps AAC, format 249 is webm audio, etc.)
+            ydl_opts = {
+                'format': '139/249/140/251/bestaudio',
+                'outtmpl': f"{audio_path}.%(ext)s",
+                'quiet': True,
+                'no_warnings': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+                
+            # Find the downloaded file (matching any extension since we specified the base path)
+            downloaded_file = None
+            for f in os.listdir(temp_dir):
+                if f.startswith(f"audio_{video_id}"):
+                    downloaded_file = os.path.join(temp_dir, f)
+                    break
+                    
+            if not downloaded_file:
+                raise FileNotFoundError("Audio file download failed or not found on disk.")
+                
+            file_size = os.path.getsize(downloaded_file)
+            # Limit size to 25MB for Groq Whisper API
+            if file_size > 25 * 1024 * 1024:
+                raise ValueError(
+                    f"Downloaded audio file is {file_size / (1024*1024):.1f}MB, which exceeds "
+                    "Groq's 25MB limit. The video is too long to transcribe automatically."
+                )
+                
+            # Call Groq Whisper API
+            client = Groq(api_key=groq_api_key)
+            with open(downloaded_file, 'rb') as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-large-v3",
+                    response_format="text"
+                )
+                
+            # Whisper with response_format="text" returns a raw string
+            # If it returns an object under default settings, get the text attribute
+            full_text = transcript if isinstance(transcript, str) else getattr(transcript, 'text', '')
+            
+            if full_text.strip():
+                return full_text
+                
+        except Exception as e:
+            errors.append(f"Whisper transcription failed: {str(e)}")
+        finally:
+            # Clean up all downloaded audio files inside the temp folder
+            if os.path.exists(temp_dir):
+                for f in os.listdir(temp_dir):
+                    try:
+                        os.remove(os.path.join(temp_dir, f))
+                    except Exception:
+                        pass
+                try:
+                    os.rmdir(temp_dir)
+                except Exception:
+                    pass
+    else:
+        errors.append("Groq API key not provided, skipped Whisper fallback.")
         
     # If all automated methods failed, raise error
     combined_errors = " | ".join(errors)

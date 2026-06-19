@@ -261,6 +261,8 @@ if "show_manual_transcript_input" not in st.session_state:
     st.session_state.show_manual_transcript_input = False
 if "failed_video_id" not in st.session_state:
     st.session_state.failed_video_id = None
+if "error_message" not in st.session_state:
+    st.session_state.error_message = ""
 
 # Main Application Title
 st.markdown("""
@@ -332,8 +334,13 @@ if not st.session_state.video_id:
         st.markdown(f"""
         <div class='premium-card' style='border-color: rgba(239, 68, 68, 0.4) !important;'>
             <h3 style='margin-bottom: 8px; font-family: Outfit; font-weight: 600; color: #f87171;'>📋 Manual Transcript Fallback</h3>
+            <p style='color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 8px;'>
+                Failed to retrieve transcript automatically for video ID <b>{st.session_state.failed_video_id}</b>:
+            </p>
+            <div style='color: #f87171; font-size: 12.5px; font-family: monospace; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.25); line-height: 1.4; margin-bottom: 12px; max-height: 150px; overflow-y: auto;'>
+                {st.session_state.error_message}
+            </div>
             <p style='color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 0;'>
-                YouTube blocked the server's IP address from fetching the transcript for video ID <b>{st.session_state.failed_video_id}</b>.
                 Please copy the transcript of the video and paste it below to start your chat session.
             </p>
         </div>
@@ -429,8 +436,8 @@ if not st.session_state.video_id:
                             st.session_state.transcript_text = rag_engine.load_cached_transcript(extracted_id)
                         else:
                             st.toast("🌐 Fetching transcript from YouTube...", icon="📥")
-                            # Download transcripts
-                            transcript_text = rag_engine.fetch_transcript_text(extracted_id)
+                            # Download transcripts (passing Groq API key for Whisper fallback)
+                            transcript_text = rag_engine.fetch_transcript_text(extracted_id, st.session_state.groq_api_key)
                             
                             st.toast("🧠 Generating embeddings and building FAISS index...", icon="⚙️")
                             # Split and embed documents locally
@@ -446,6 +453,7 @@ if not st.session_state.video_id:
                         st.session_state.rag_chain = rag_chain
                         st.session_state.messages = []
                         st.session_state.last_processed_timestamp = time.time() * 1000
+                        st.session_state.error_message = ""
                         
                         st.success("🎉 RAG Index successfully created!")
                         st.rerun()
@@ -453,6 +461,7 @@ if not st.session_state.video_id:
                         st.error(f"❌ Failed to index transcript: {str(e)}")
                         st.session_state.show_manual_transcript_input = True
                         st.session_state.failed_video_id = extracted_id
+                        st.session_state.error_message = str(e)
                         st.markdown("""
                         **Common troubleshooting steps:**
                         - Make sure the video is public and has subtitles (captions) enabled.
