@@ -53,6 +53,15 @@ def fetch_transcript_text(video_id, groq_api_key=None):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9"
         })
+        import os
+        if os.path.exists("cookies.txt"):
+            import http.cookiejar
+            try:
+                cookie_jar = http.cookiejar.MozillaCookieJar("cookies.txt")
+                cookie_jar.load(ignore_discard=True, ignore_expires=True)
+                session.cookies.update(cookie_jar)
+            except Exception as ce:
+                errors.append(f"Failed to load cookies.txt in YouTubeTranscriptApi: {str(ce)}")
         api = YouTubeTranscriptApi(http_client=session)
         transcript_list = api.list(video_id)
         
@@ -87,6 +96,7 @@ def fetch_transcript_text(video_id, groq_api_key=None):
             'writeautomaticsub': True,
             'quiet': True,
             'no_warnings': True,
+            'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -147,6 +157,7 @@ def fetch_transcript_text(video_id, groq_api_key=None):
                 'outtmpl': f"{audio_path}.%(ext)s",
                 'quiet': True,
                 'no_warnings': True,
+                'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:

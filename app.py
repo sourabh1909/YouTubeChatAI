@@ -408,12 +408,12 @@ if not st.session_state.video_id:
                 st.session_state.temp_url_input = "dQw4w9WgXcQ"
                 st.rerun()
         with ec2:
-            if st.button("🤖 Llama 3.1 & Groq RAG", key="ex_llama", type="secondary"):
-                st.session_state.temp_url_input = "ycPr5-27vAk"
+            if st.button("🤖 Karpathy: Intro to LLMs", key="ex_llama", type="secondary"):
+                st.session_state.temp_url_input = "zjkBMFhNj_g"
                 st.rerun()
         with ec3:
-            if st.button("⛓️ LangChain RAG Intro", key="ex_langchain", type="secondary"):
-                st.session_state.temp_url_input = "LHNtUMefd8o"
+            if st.button("🎓 Sal Khan: AI & Education", key="ex_langchain", type="secondary"):
+                st.session_state.temp_url_input = "hJP5GqnTrNo"
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
         
